@@ -1,0 +1,179 @@
+header {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-height: 200px;
+  background: linear-gradient(135deg, #4f46e5, #3b82f6);
+  color: white;
+  padding: 60px 10px 40px;
+  box-sizing: border-box;
+  position: relative;
+}
+footer {
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: white;
+  color: #a1a2a3;
+  font-size: 12px;
+}
+.title {
+  font-size: 60px;
+  font-weight: bold;
+  text-align: center;
+  color: var(--primary-color);
+  text-shadow: -2px -2px 0 white, 2px -2px 0 white, -2px 2px 0 white, 2px 2px 0 white;
+  z-index: 1;
+}
+.sub-title {
+  z-index: 1;
+  font-size: 20px;
+  font-weight: lighter;
+  margin: 20px;
+  text-align: center;
+}
+
+.desc-list {
+  z-index: 1;
+  display: flex;
+  align-items: center;
+}
+
+.desc-list .desc-item {
+  margin: 8px;
+}
+.desc-item img {
+  height: 30px;
+}
+
+main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 20px 0;
+}
+section {
+  /* width: 70%; */
+  margin: 20px 0;
+}
+
+@media screen and (max-width: 1280px) {
+  section {
+    width: 90%;
+  }
+}
+@media screen and (min-width: 1280px) {
+  section {
+    width: 70%;
+  }
+}
+
+.section {
+  padding: 15px;
+  box-sizing: border-box;
+  background-color: white;
+  border-radius: 10px;
+  border: 1px solid #ddd;
+  font-size: 14px;
+}
+.section-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.section-title {
+  font-size: 22px;
+  font-weight: 600;
+}
+.section-subtitle {
+  font-size: 14px;
+  color: #a1a2a3;
+}
+
+.table-wrapper {
+  width: 100%;
+  padding: 15px;
+  background-color: white;
+  border-radius: 10px;
+  border: 1px solid #ddd;
+}
+.table-title {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 15px;
+}
+.bench-btns {
+  display: flex;
+}
+
+.bench-btns .bench-btn {
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  margin: 0 8px;
+  justify-content: center;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  min-width: 100px;
+  cursor: pointer;
+}
+.bench-btn__active {
+  background: #3b82f6;
+  color: white;
+  font-weight: bold;
+}
+.table-container {
+  max-height: 600px;  /* 固定高度 */
+  overflow: auto;   /* 超出出现纵向滚动条 */
+  scrollbar-width: thin;
+  scrollbar-color: #d9d9d9 #fff;
+  /* border-radius: 10px; */
+  background-color: white;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+}
+
+.table-container table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.table-container thead tr {
+  background: linear-gradient(135deg, #4f46e5, #3b82f6);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.table-container thead th {
+  /* position: sticky;
+  top: 0; */
+  color: white;
+  /* z-index: 1; */
+  border-bottom: 1px solid #ccc;
+  padding: 12px 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+.table-container td {
+  padding: 10px 0;
+  text-align: center;
+  min-width: 60px;
+}
+.table-container tr:nth-child(even) {
+  background-color: #f9f9f9; /* 偶数行 */
+}
+
+
+.img-wrapper {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 15px;
+}
+.section img {
+  height: 200px;
+}
