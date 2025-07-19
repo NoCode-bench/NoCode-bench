@@ -11,7 +11,8 @@
 - **Format**: Each instance contains the documentation change, relevant context files, and a ground truth patch
 - **Subset**: Includes a manually verified subset (**NoCode-bench-Verified**) for high-quality, human-evaluated evaluation
 
-
+> [!NOTE]
+> We will provide the benchmark's Docker images and upload the benchmark to open-source platforms like huggingface after the paper can be de-anonymized.
 
 ## 🚀 How to Use the Benchmark
 
