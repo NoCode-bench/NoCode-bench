@@ -40,6 +40,8 @@ footer {
   z-index: 1;
   display: flex;
   align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
 }
 
 .desc-list .desc-item {
@@ -63,6 +65,10 @@ section {
 @media screen and (max-width: 1280px) {
   section {
     width: 90%;
+  }
+  .section img {
+    width: 100%;
+    height: auto !important;
   }
 }
 @media screen and (min-width: 1280px) {
@@ -104,6 +110,7 @@ section {
   display: flex;
   justify-content: space-between;
   margin-bottom: 15px;
+  flex-wrap: wrap;
 }
 .bench-btns {
   display: flex;
@@ -113,12 +120,15 @@ section {
   font-size: 12px;
   display: flex;
   align-items: center;
-  margin: 0 8px;
+  /* margin: 0 8px; */
   justify-content: center;
   border: 1px solid #ddd;
   border-radius: 5px;
   min-width: 100px;
   cursor: pointer;
+}
+.bench-btns .bench-btn:not(:last-child) {
+  margin-right: 16px;
 }
 .bench-btn__active {
   background: #3b82f6;
@@ -160,7 +170,7 @@ section {
 .table-container td {
   padding: 10px 0;
   text-align: center;
-  min-width: 60px;
+  min-width: 50px;
 }
 .table-container tr:nth-child(even) {
   background-color: #f9f9f9; /* 偶数行 */
