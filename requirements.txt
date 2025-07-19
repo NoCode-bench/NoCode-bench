@@ -1,0 +1,8 @@
+tree-sitter==0.21.3
+tree-sitter-languages==1.10.2
+docker==7.1.0
+unidiff
+tqdm
+lxml
+packaging
+requests
