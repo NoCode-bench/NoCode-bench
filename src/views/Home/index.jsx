@@ -95,12 +95,12 @@ const TableWrapper = ({ leaderboard }) => {
                 leaderboard[activeBench]?.['data'].map((item, index) => {
                   return (
                     <tr key={index}>
-                      <td>{index + 1}</td>
+                      <td className='td-sm'>{index + 1}</td>
                       <td>{item.method}</td>
                       <td>{item.model}</td>
                       <td>{item.resolved}</td>
-                      <td>{item.org}</td>
-                      <td>{item.site || '--'}</td>
+                      <td className='td-sm'>{item.org}</td>
+                      <td className='td-sm'>{item.site || '--'}</td>
                       <td>{item.date}</td>
                     </tr>
                   )

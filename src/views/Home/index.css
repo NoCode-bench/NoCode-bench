@@ -173,6 +173,9 @@ section {
   min-width: 120px;
 }
 
+.table-container .td-sm {
+  min-width: 60px;
+}
 
 .table-container tr:nth-child(even) {
   background-color: #f9f9f9; /* 偶数行 */
