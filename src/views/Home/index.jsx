@@ -1,38 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 // import TaskImg from '../../assets/task.png'
 import linkIcon from '../../assets/link.png'
 import './index.css'
 
-// const sections = [
-//   {
-//     title: 'Overview',
-//     subtitle: 'Introduction to NoCode-bench',
-//     content: [
-//       {
-//         type: 'img',
-//         content: 'https://raw.githubusercontent.com/ZJU-CTAG/NoCode-bench/refs/heads/main/doc/task.png'
-//       },
-//       {
-//         type: 'text',
-//         content: 'NoCode-bench is a benchmark designed to evaluate the ability of Large Language Models (LLMs) to perform no-code feature addition using natural language documentation as input. Unlike prior benchmarks that focus on bug fixing or general issue resolution, NoCode-bench targets a new paradigm where feature development is driven by documentation changes in real-world software projects.',
-//       },
-//       {
-//         type: 'text',
-//         content: 'Each instance takes user-facing documentation changes as input and expects the model to generate corresponding code changes. The implementation is validated using developer-written test cases.',
-//       }
-//     ]
-//   },
-//   {
-//     title: 'How to submit',
-//     subtitle: '',
-//     content: [
-//       {
-//         type: 'rich-text',
-//         content: 'Prepare a .jsonl file. Each record must contain at least the keys instance_id and model_patch. Email the file to <b>dengle@zju.edu.cn</b>. We will evaluate your submission locally and update the leaderboard once the results are verified.',
-//       }
-//     ]
-//   }
-// ]
 
 
 const paragragh2html = {
@@ -52,6 +22,9 @@ const paragragh2html = {
     return (
       <p dangerouslySetInnerHTML={{ __html: content }} />
     )
+  },
+  'code': (content) => {
+    return <pre><code>{content}</code></pre>
   }
 }
 
@@ -68,7 +41,7 @@ const descList = [
   },
   {
     title: 'huggingface',
-    href: 'https://huggingface.co/organizations/NoCode-bench/share/eoNAdddemrNANPlrWcrwltvMjkxsXgBSmX',
+    href: 'https://huggingface.co/NoCode-bench',
     badge: 'https://img.shields.io/badge/HuggingFace-FFD21E?logo=huggingface&logoColor=white&style=for-the-badge'
   },
   {
@@ -108,7 +81,18 @@ const Footer = () => {
 }
 
 const TableWrapper = ({ leaderboard }) => {
-  const [activeBench, setActiveBench] = useState(0)
+  const [activeBench, setActiveBench] = useState(1)
+  const [sortedLeaderboard, setSortedLeaderboard] = useState(leaderboard)
+
+  useEffect(() => {
+    const sortedLeaderboard = leaderboard.map(group => ({
+      ...group,
+      data: [...group.data].sort((a, b) => b.score - a.score)
+    }));
+
+    setSortedLeaderboard(sortedLeaderboard);
+  }, [leaderboard]);
+
 
   return (
     <section>
@@ -147,7 +131,7 @@ const TableWrapper = ({ leaderboard }) => {
             </thead>
             <tbody>
               {
-                leaderboard[activeBench]?.['data'].map((item, index) => {
+                sortedLeaderboard[activeBench]?.['data'].map((item, index) => {
                   return (
                     <tr key={index}>
                       <td className='td-sm'>
@@ -157,7 +141,7 @@ const TableWrapper = ({ leaderboard }) => {
                       </td>
                       <td>{item.method}</td>
                       <td>{item.model}</td>
-                      <td className='td-mid'>{item.resolved}</td>
+                      <td className='td-mid'>{item.score.toFixed(2)}</td>
                       <td className='td-sm'>
                         {item.org ?
                           <div style={{
@@ -212,7 +196,7 @@ const SectionWrapper = ({ title = '', subtitle = '', children }) => {
   )
 }
 
-const Index = ({ leaderboard=[], sections=[] }) => {
+const Index = ({ leaderboard = [], sections = [] }) => {
 
   console.log(leaderboard)
   return (

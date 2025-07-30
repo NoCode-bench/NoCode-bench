@@ -263,3 +263,16 @@ section {
   color: #9a3412 !important;
   font-weight: 500;
 }
+
+pre {
+  background: #40434b;
+  color: #eee;
+  padding: 10px;
+  border-radius: 6px;
+  overflow-x: auto;
+  /* white-space: pre-wrap; */
+}
+
+code {
+  font-family: monospace;
+}
