@@ -11,6 +11,7 @@ header {
   box-sizing: border-box;
   position: relative;
 }
+
 footer {
   height: 50px;
   display: flex;
@@ -20,6 +21,7 @@ footer {
   color: #a1a2a3;
   font-size: 12px;
 }
+
 .title {
   font-size: 60px;
   font-weight: bold;
@@ -28,6 +30,7 @@ footer {
   text-shadow: -2px -2px 0 white, 2px -2px 0 white, -2px 2px 0 white, 2px 2px 0 white;
   z-index: 1;
 }
+
 .sub-title {
   z-index: 1;
   font-size: 20px;
@@ -47,8 +50,10 @@ footer {
 .desc-list .desc-item {
   margin: 8px;
 }
+
 .desc-item img {
   height: 30px;
+  border-radius: 4px;
 }
 
 main {
@@ -57,6 +62,12 @@ main {
   align-items: center;
   margin: 20px 0;
 }
+
+.link-img {
+  width: 20px;
+  height: 20px;
+}
+
 section {
   /* width: 70%; */
   margin: 15px 0;
@@ -66,11 +77,21 @@ section {
   section {
     width: 90%;
   }
+
   .section img {
     width: 100%;
     height: auto !important;
   }
+
+  .title {
+    font-size: 40px;
+  }
+
+  .sub-title {
+    font-size: 15px;
+  }
 }
+
 @media screen and (min-width: 1280px) {
   section {
     width: 70%;
@@ -85,15 +106,18 @@ section {
   border: 1px solid #ddd;
   font-size: 14px;
 }
+
 .section-title-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
+
 .section-title {
   font-size: 22px;
   font-weight: 600;
 }
+
 .section-subtitle {
   font-size: 14px;
   color: #a1a2a3;
@@ -106,18 +130,20 @@ section {
   border-radius: 10px;
   border: 1px solid #ddd;
 }
+
 .table-title {
   display: flex;
   justify-content: space-between;
   margin-bottom: 15px;
   flex-wrap: wrap;
 }
+
 .bench-btns {
   display: flex;
 }
 
 .bench-btns .bench-btn {
-  font-size: 12px;
+  font-size: 15px;
   display: flex;
   align-items: center;
   /* margin: 0 8px; */
@@ -126,18 +152,24 @@ section {
   border-radius: 5px;
   min-width: 100px;
   cursor: pointer;
+  padding: 3px 10px;
 }
+
 .bench-btns .bench-btn:not(:last-child) {
   margin-right: 16px;
 }
+
 .bench-btn__active {
   background: #3b82f6;
   color: white;
-  font-weight: bold;
+  font-weight: 550;
 }
+
 .table-container {
-  max-height: 600px;  /* 固定高度 */
-  overflow: auto;   /* 超出出现纵向滚动条 */
+  max-height: 600px;
+  /* 固定高度 */
+  overflow: auto;
+  /* 超出出现纵向滚动条 */
   scrollbar-width: thin;
   scrollbar-color: #d9d9d9 #fff;
   /* border-radius: 10px; */
@@ -157,6 +189,7 @@ section {
   top: 0;
   z-index: 1;
 }
+
 .table-container thead th {
   /* position: sticky;
   top: 0; */
@@ -167,6 +200,7 @@ section {
   font-size: 14px;
   font-weight: 700;
 }
+
 .table-container td {
   padding: 10px 0;
   text-align: center;
@@ -177,8 +211,13 @@ section {
   min-width: 60px;
 }
 
+.table-container .td-mid {
+  min-width: 80px;
+}
+
 .table-container tr:nth-child(even) {
-  background-color: #f9f9f9; /* 偶数行 */
+  background-color: #f9f9f9;
+  /* 偶数行 */
 }
 
 
@@ -189,6 +228,38 @@ section {
   justify-content: center;
   margin-top: 15px;
 }
+
 .section img {
   height: 200px;
+}
+
+.rank-badge {
+  width: 32px;
+  height: 32px;
+  margin: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 14px;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  background-color: #f1f5f9;
+}
+
+.rank-1 {
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  color: #92400e !important;
+  font-weight: 500;
+}
+
+.rank-2 {
+  background: linear-gradient(135deg, #d1d5db, #9ca3af);
+  color: #374151 !important;
+  font-weight: 500;
+}
+
+.rank-3 {
+  background: linear-gradient(135deg, #f97316, #ea580c);
+  color: #9a3412 !important;
+  font-weight: 500;
 }
