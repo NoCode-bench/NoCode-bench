@@ -6,16 +6,19 @@ Language-Driven Feature Addition</h1>
 
 <div align="center">
     <a href="https://github.com/ZJU-CTAG/NoCode-bench">
-        <img src="https://img.shields.io/badge/GitHub-000?logo=github&logoColor=FFE165&style=for-the-badge" alt="致谢">
+        <img src="https://img.shields.io/badge/GitHub-000?logo=github&logoColor=FFE165&style=for-the-badge" alt="">
     </a>
     <a href="https://huggingface.co/NoCode-bench">
-        <img src="https://img.shields.io/badge/Datasets-000?logo=huggingface&logoColor=FFE165&style=for-the-badge" alt="查看文档">
+        <img src="https://img.shields.io/badge/Datasets-000?logo=huggingface&logoColor=FFE165&style=for-the-badge" alt="">
     </a>
     <a href="https://arxiv.org/pdf/2507.18130">
-        <img src="https://img.shields.io/badge/Paper-000?logoColor=FFE165&logo=arxiv&style=for-the-badge" alt="Arxiv论文">
+        <img src="https://img.shields.io/badge/Paper-000?logoColor=FFE165&logo=arxiv&style=for-the-badge" alt="">
+    </a>
+    <a href="https://nocodebench.org/">
+        <img src="https://img.shields.io/badge/Leaderboard-000?logoColor=FFE165&logo=googledocs&style=for-the-badge" alt="">
     </a>
     <a href="">
-        <img src="https://img.shields.io/badge/Leaderboard-000?logoColor=FFE165&logo=googledocs&style=for-the-badge" alt="评估基准分数">
+        <img src="https://img.shields.io/badge/DockerHub-000?logoColor=FFE165&logo=docker&style=for-the-badge" alt="">
     </a>
     <hr>
 </div>
@@ -35,8 +38,9 @@ Language-Driven Feature Addition</h1>
 - **Format**: Each instance contains the documentation change, relevant context files, and a ground truth patch
 - **Subset**: Includes a manually verified subset (**NoCode-bench-Verified**) for high-quality, human-evaluated evaluation
 
-> [!NOTE]
-> We will provide the benchmark's Docker images and upload the benchmark to open-source platforms like huggingface after the paper can be de-anonymized.
+[//]: # (> [!NOTE])
+
+[//]: # (> We will provide the benchmark's Docker images and upload the benchmark to open-source platforms like huggingface after the paper can be de-anonymized.)
 
 To access NoCode-bench, copy and run the following code:
 ```shell
@@ -60,6 +64,13 @@ NoCode-bench enables reproducible evaluations via Docker, by building the base i
 ```bash
 cd environment
 bash setup_all.sh
+```
+
+We have also provided a pre-built Docker image for NoCode-bench, which can be pulled from Docker Hub:
+
+```bash
+cd environment
+bash pull_from_hub.sh
 ```
 
 [//]: # (### 2. Data Loading)

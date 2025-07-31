@@ -14,12 +14,12 @@ git config --global --add safe.directory "*"
 
 # if you are in china, please set proxy
 # set conda proxy
-#conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
-#conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/free
-#conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/r
-#conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/pro
-#conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/msys2
-#conda config --set show_channel_urls yes
+conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
+conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/free
+conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/r
+conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/pro
+conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/msys2
+conda config --set show_channel_urls yes
 ## set pip proxy
 #pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
 
