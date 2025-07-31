@@ -38,6 +38,7 @@ def run_instance(
         client,
         log_dir,
         proxy,
+        image_level
 ):
     '''
     Run a single instance with the given prediction.
@@ -62,33 +63,59 @@ def run_instance(
         'feature_patch_applied': False
     }
     try:
-        # build container
-        container_name = f'{image_name}__{instance_id}'
-        container = du.build_container(image_name=f'{image_name}:dev', container_name=container_name, client=client,
-                                       logger=logger, proxy=proxy)
-        container.start()
-        # reset branch
-        container.exec_run('git clean -fdx', workdir=work_dir)
-        container.exec_run('git reset --hard HEAD', workdir=work_dir)
-        # checkout base_commit 
-        git_checkout_cmd = f"git checkout {commit_id}"
-        container.exec_run(git_checkout_cmd, workdir=work_dir)
-        # apply test patch
-        patch_file = Path(patch_path)
-        patch_file.write_text(test_patch)
-        du.copy_to_container(container, patch_file, PurePosixPath(DOCKER_PATCH))
-        cmd_res = container.exec_run(f"git apply {DOCKER_PATCH}", workdir=work_dir)
-        if cmd_res.exit_code != 0:
-            logger.info(f"Failed to apply test patch to container")
-            return test_results
+        if image_level == 'repo':
+            # build container
+            container_name = f'{image_name}__{instance_id}'
+            container = du.build_container(image_name=f'{image_name}:dev', container_name=container_name, client=client,
+                                           logger=logger, proxy=proxy)
+            container.start()
+            # reset branch
+            container.exec_run('git clean -fdx', workdir=work_dir)
+            container.exec_run('git reset --hard HEAD', workdir=work_dir)
+            # checkout base_commit
+            git_checkout_cmd = f"git checkout {commit_id}"
+            container.exec_run(git_checkout_cmd, workdir=work_dir)
+            # apply test patch
+            patch_file = Path(patch_path)
+            patch_file.write_text(test_patch)
+            du.copy_to_container(container, patch_file, PurePosixPath(DOCKER_PATCH))
+            cmd_res = container.exec_run(f"git apply {DOCKER_PATCH}", workdir=work_dir)
+            if cmd_res.exit_code != 0:
+                logger.info(f"Failed to apply test patch to container")
+                return test_results
+            else:
+                logger.info(f"Successfully applied test patch to container")
+            # get the config of the instance
+            config = MAP_REPO_TO_CONFIG[repo][version]
+            # run pre_install
+            if 'pre_install' in config:
+                for pre_install_cmd in config['pre_install']:
+                    cmd_res = container.exec_run(cmd=pre_install_cmd, workdir=work_dir)
+
+            # conda activate and install
+            cmd_res = container.exec_run(f"conda run -n {config['conda_env']} {config['install']}",
+                                         workdir=work_dir)
+
         else:
-            logger.info(f"Successfully applied test patch to container")
-        # get the config of the instance
-        config = MAP_REPO_TO_CONFIG[repo][version]
-        # run pre_install
-        if 'pre_install' in config:
-            for pre_install_cmd in config['pre_install']:
-                cmd_res = container.exec_run(cmd=pre_install_cmd, workdir=work_dir)
+            # build container
+            container_name = f'{image_name}__{instance_id}'
+            container = du.build_container(image_name=f'ncbench_{instance_id}:latest', container_name=container_name, client=client,
+                                           logger=logger, proxy=proxy)
+            container.start()
+
+            # apply test patch
+            patch_file = Path(patch_path)
+            patch_file.write_text(test_patch)
+            du.copy_to_container(container, patch_file, PurePosixPath(DOCKER_PATCH))
+            cmd_res = container.exec_run(f"git apply {DOCKER_PATCH}", workdir=work_dir)
+            if cmd_res.exit_code != 0:
+                logger.info(f"Failed to apply test patch to container")
+                return test_results
+            else:
+                logger.info(f"Successfully applied test patch to container")
+
+            # get the config of the instance
+            config = MAP_REPO_TO_CONFIG[repo][version]
 
         # apply feature patch
         patch_file.write_text(feature_patch)
@@ -109,8 +136,6 @@ def run_instance(
             logger.info(f"Failed to apply feature patch to container")
             return test_results
 
-        # conda activate and install
-        cmd_res = container.exec_run(f"conda run -n {config['conda_env']} {config['install']}", workdir=work_dir)
 
         # run f2p and p2p
         def run_tests_in_parallel(container, test_files, config, work_dir, timeout, logger, test_type):
@@ -223,8 +248,8 @@ def run_instances(args):
     existing = {i['instance_id']: i for i in prev_instance}
     logger = get_logger(log_name='eval', log_file=os.path.join(args.log_dir, '0eval.log'))
     logger.info(args)
-    # tasks = load_jsonl(args.feature_bench_tasks)
-    tasks = load_dataset(args.feature_bench_tasks, split='test')
+    # tasks = load_jsonl(args.bench_tasks)
+    tasks = load_dataset(args.bench_tasks, split='test')
     tasks_record = {i['instance_id']: i for i in tasks}
     logger.info(f'Loaded {len(tasks)} tasks')
     predictions = load_jsonl(args.predictions_path)
@@ -253,6 +278,7 @@ def run_instances(args):
                 client=client,
                 log_dir=args.log_dir,
                 proxy=args.proxy,
+                image_level=args.image_level
             )
         except (DockerException, Exception) as e:
             logger.error(f"Instance {instance_id} skipped due to docker error: {e}")
@@ -280,8 +306,8 @@ def run_instances(args):
 
 
 def eval_instances(args):
-    # all_tasks = load_jsonl(args.feature_bench_tasks)
-    all_tasks = load_dataset(args.feature_bench_tasks, split='test')
+    # all_tasks = load_jsonl(args.bench_tasks)
+    all_tasks = load_dataset(args.bench_tasks, split='test')
     reports_fpath = os.path.join(args.log_dir, '0reports.jsonl')
     if os.path.exists(reports_fpath):
         reports = load_jsonl(reports_fpath)
@@ -411,8 +437,8 @@ def eval_file_localization(args):
     results to the same *_summary_report.txt produced in eval_instances.
     """
     # ---------- build reference mapping ----------
-    # tasks = load_jsonl(args.feature_bench_tasks)
-    tasks = load_dataset(args.feature_bench_tasks, split='test')
+    # tasks = load_jsonl(args.bench_tasks)
+    tasks = load_dataset(args.bench_tasks, split='test')
     tasks_record = {}
     for task in tasks:
         gt_patch_set = PatchSet(task['feature_patch'])
@@ -496,14 +522,15 @@ if __name__ == "__main__":
     parser.add_argument("--predictions_path", type=str, help="Path to predictions file (must be .jsonl)", required=True)
     parser.add_argument("--fl_predictions_path", type=str, help="Path to fl predictions file (must be .jsonl)")
     parser.add_argument("--log_dir", type=str, help="Path to log directory", required=True)
-    parser.add_argument("--feature_bench_tasks", type=str, help="Path to benchmark task instances file", required=True,
+    parser.add_argument("--bench_tasks", type=str, help="Path to benchmark task instances file", required=True,
                         choices=['NoCode-bench/NoCode-bench_Verified', 'NoCode-bench/NoCode-bench_Full'])
     parser.add_argument("--fl_level", type=str, choices=['patch', 'file', 'both'], default='patch')
+    parser.add_argument("--image_level", type=str, choices=['instance', 'repo'], default='repo')
     parser.add_argument("--output_file", type=str, default=None,
                         help="(Optional) Path to save detailed evaluation results (.jsonl).")
     parser.add_argument("--timeout", type=int, help="(Optional) Timeout in seconds (default: 600)", default=600)
     parser.add_argument("--max_workers", type=int, help="(Optional) Max workers (default: 10)", default=1)
-    parser.add_argument("--proxy", type=int, help="(Optional) Http proxy (default: None)", default=None)
+    parser.add_argument("--proxy", type=str, help="(Optional) Http proxy (default: None)", default=None)
 
     args = parser.parse_args()
     main(args)

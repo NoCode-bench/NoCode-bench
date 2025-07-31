@@ -60,17 +60,27 @@ pip install -r requirements.txt
 ```
 
 NoCode-bench enables reproducible evaluations via Docker, by building the base image (`fb_base:dev`) and the project image (`fb_[repo]:dev`) as follows:
-
 ```bash
 cd environment
 bash setup_all.sh
 ```
 
-We have also provided a pre-built Docker image for NoCode-bench, which can be pulled from Docker Hub:
-
+NoCode-bench also support instance-level Docker images, which can be built using the following command:
 ```bash
 cd environment
-bash pull_from_hub.sh
+python setup_instances_images.py \
+   --bench_tasks NoCode-bench/NoCode-bench_Verified \
+   --log_dir logs \
+   --max_workers 20
+```
+
+
+We have also provided a pre-built Docker image for NoCode-bench, which can be pulled from Docker Hub.
+For repo-level docker images, you can pull them using the following command:
+```bash
+cd environment
+bash pull_from_hub.sh # for repo level
+python pull_instance_images.py --bench_tasks NoCode-bench/NoCode-bench_Verified  # for instance level
 ```
 
 [//]: # (### 2. Data Loading)
@@ -145,9 +155,10 @@ export PYTHONPATH=$PYTHONPATH:$(pwd)
 python ./evaluation/eval.py \
     --predictions_path ./all_preds.jsonl \  # <path_to_your_predictions>
     --log_dir ./evaluation/logs \ # <path_to_your_log_dir>
-    --feature_bench_tasks NoCode-bench/NoCode-bench_Verified \ # <dataset_name>
+    --bench_tasks NoCode-bench/NoCode-bench_Verified \ # <dataset_name>
     --max_workers 110 \ # <number_of_workers>
     --output_file eval_result.txt \ # <path_to_your_output_file>
+    --image_level repo \ # <cache_image_level>
     --timeout 600 \ # <timeout_in_seconds>
     --proxy None # <proxy_if_needed>
 ```

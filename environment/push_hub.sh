@@ -1,14 +1,14 @@
 #!/bin/bash
 
 REPOS=(
-#  astropy
-#  django
-#  matplotlib
-#  pylint
-#  pytest
-#  requests
-#  scikit-learn
-#  seaborn
+  astropy
+  django
+  matplotlib
+  pylint
+  pytest
+  requests
+  scikit-learn
+  seaborn
   sphinx
   xarray
 )
