@@ -67,8 +67,8 @@ bash setup_all.sh
 
 NoCode-bench also support instance-level Docker images, which can be built using the following command:
 ```bash
-cd environment
-python setup_instances_images.py \
+export PYTHONPATH=$PYTHONPATH:$(pwd)
+python environment/setup_instances_images.py \
    --bench_tasks NoCode-bench/NoCode-bench_Verified \
    --log_dir logs \
    --max_workers 20
