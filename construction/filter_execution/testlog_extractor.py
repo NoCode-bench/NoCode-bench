@@ -1,5 +1,31 @@
 import re
 
+def extract_pytest_info_requests(test_content, old=False):
+    lines = test_content.splitlines()
+    res = []
+
+    # 正则匹配状态和测试名，允许测试名中 [] 内包含空格
+    pattern = re.compile(r'^(PASSED|FAILED|ERROR|XFAIL)\s+((?:[^\[\s]+|\[[^\]]+\])+)')
+
+    for line in lines:
+        match = pattern.match(line)
+        if match:
+            status, test_name = match.groups()
+            if status == 'ERROR' and 'conda.cli.main_run' in test_name:
+                continue
+            res.append((status, test_name))
+
+    if old:
+        # 旧版本格式是 "<file> <STATUS>"，比如 "test_file.py PASSED"
+        for line in lines:
+            parts = line.split()
+            if len(parts) >= 2 and parts[1] in ['PASSED', 'ERROR', 'FAILED', 'XFAIL']:
+                res.append((parts[1], parts[0]))
+
+    return res
+
+# -------------- old -----------------
+
 def extract_pytest_info(test_content, old=False):
     lines = test_content.splitlines()
     # if not old:
