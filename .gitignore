@@ -1,1 +1,3 @@
 patches/*
+**/__pycache__/
+.vscode/
