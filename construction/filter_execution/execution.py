@@ -1344,8 +1344,8 @@ def run_instance(
             before_results = extract_pytest_info(before_content, old=True)
             after_results = extract_pytest_info(after_content, old=True)
         elif any(i in image_name for i in ['requests']):
-            before_results = extract_pytest_info_requests(before_content, old=True)
-            after_results = extract_pytest_info_requests(after_content, old=True)
+            before_results = extract_pytest_info(before_content, old=True)
+            after_results = extract_pytest_info(after_content, old=True)
         else:
             before_results = extract_pytest_info(before_content)
             after_results = extract_pytest_info(after_content)

@@ -1,6 +1,6 @@
 import re
 
-def extract_pytest_info_requests(test_content, old=False):
+def extract_pytest_info(test_content, old=False):
     lines = test_content.splitlines()
     res = []
 
@@ -26,7 +26,7 @@ def extract_pytest_info_requests(test_content, old=False):
 
 # -------------- old -----------------
 
-def extract_pytest_info(test_content, old=False):
+def extract_pytest_info_old1(test_content, old=False):
     lines = test_content.splitlines()
     # if not old:
     res = [tuple(line.split()[:2]) for line in lines if any([line.startswith(i) for i in ['ERROR ', 'FAILED ', 'PASSED ', 'XFAIL ']])]
