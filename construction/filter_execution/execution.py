@@ -12,6 +12,13 @@ import docker
 from tqdm import tqdm
 from unidiff import PatchSet
 
+# # 获取当前脚本所在的目录，并向上导航到父目录
+# current_dir = os.path.dirname(os.path.abspath(__file__))
+# parent_dir = os.path.dirname(current_dir)
+
+# # 将父目录添加到sys.path
+# if parent_dir not in sys.path:
+#     sys.path.append(parent_dir)
     
 from utils.logger import get_logger
 from utils.utils import load_jsonl, PatchTools, dump_jsonl, run_cmd, run_cmd_with_err
@@ -1333,7 +1340,10 @@ def run_instance(
         elif 'sympy' in image_name:
             before_results = extract_sympy_tests(before_content)
             after_results = extract_sympy_tests(after_content)
-        elif any(i in image_name for i in ['pytest', 'sphinx', 'requests']):
+        elif any(i in image_name for i in ['pytest', 'sphinx']):
+            before_results = extract_pytest_info(before_content, old=True)
+            after_results = extract_pytest_info(after_content, old=True)
+        elif any(i in image_name for i in ['requests']):
             before_results = extract_pytest_info(before_content, old=True)
             after_results = extract_pytest_info(after_content, old=True)
         else:
@@ -1368,33 +1378,5 @@ def run_instance(
 
 
 if __name__ == '__main__':
-    # logger = get_logger(log_file = 'logs/sklearn.log')
-    exe_filter = MatplotlibExeFilter()
-    # exe_filter = XarrayExeFilter()
-    # exe_filter = SKLearnExeFilter()
-    # exe_filter = PytestExeFilter()
-    # exe_filter = AstropyExeFilter()
+    exe_filter = RequestsExeFilter()
     exe_filter.run()
-    # examples = load_jsonl(exe_filter.preprocess_fpath)
-    # # # 按版本分组
-    # import collections
-    # record = collections.defaultdict(list)
-    # id_set = set()
-    # for example in examples:
-    #     version = example['execution']['version']
-    #     if example['instance_id'] not in id_set:
-    #         id_set.add(example['instance_id'])
-    #     else:
-    #         print(example['instance_id'])
-    #     record[version].append(example)
-    # print(1)
-    # exe_filter = ExeFilter()
-    # exe_filter.run()
-    # seaborn_std_out()
-    # res_file = load_jsonl('cache/execution/examples_seaborn.jsonl')
-    # record = set([i['instance_id'] for i in res_file])
-    # a_file = load_jsonl('cache/execution/examples_seaborn.jsonl2')
-    # res = [i for i in a_file if i['instance_id'] not in record]
-    # dump_jsonl(res, 'cache/execution/check_seaborn_nof2p.jsonl')
-    # exe_filter = SeabornExeFilter()
-    # exe_filter.run()
