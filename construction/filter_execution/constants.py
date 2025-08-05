@@ -91,7 +91,7 @@ PYLINT_CONFIG.update({
     k: {
         "conda_env": 'pylint_210',
         "install": "pip install -r requirements_test.txt",
-        'test_cmd': 'pytest -rA --color=no'
+        'test_cmd': 'pytest -rA --color=no -W ignore'
     }
     for k in ['2.10', '2.11', '2.13', '2.14', '2.15', '2.16', '2.17', '3.0', '3.1', '3.2', '3.3']
 })
@@ -100,7 +100,7 @@ PYLINT_CONFIG.update({
         "conda_env": 'pylint_210',
         "pre_install": ["sed -i 's/setuptools==[0-9.]\+/setuptools==58.0.0/' requirements_test_min.txt"],
         "install": "pip install -r requirements_test.txt",
-        'test_cmd': 'pytest -rA --color=no'
+        'test_cmd': 'pytest -rA --color=no -W ignore'
     }
     for k in ['3.0', '3.1', '3.2', '3.3']
 })
@@ -110,7 +110,7 @@ ASTROPY_CONFIG.update({
     k: {
         "conda_env": 'astropy_11',
         "install": "python -m pip install -e .[test] --verbose",
-        'test_cmd': 'pytest --color=no -rA'
+        'test_cmd': 'pytest --color=no -rA -W ignore'
     }
     for k in ["1.1", "1.2", "1.3", "2.0"]
 })
@@ -121,7 +121,7 @@ ASTROPY_CONFIG.update({
 filterwarnings = 
     ignore::DeprecationWarning' > pytest.ini""",
         "install": "python -m pip install -e .[test] --verbose",
-        'test_cmd': 'pytest --color=no -rA'
+        'test_cmd': 'pytest --color=no -rA -W ignore'
     }
     for k in ["3.0", "3.1", "3.2"]
 })
@@ -130,7 +130,7 @@ ASTROPY_CONFIG.update({
         "conda_env": 'astropy_40',
         "pre_install": ["""sed -i 's/requires = \["setuptools",/requires = \["setuptools==68.0.0",/' pyproject.toml"""],
         "install": "python -m pip install -e .[test] --verbose",
-        'test_cmd': 'pytest --color=no -rA'
+        'test_cmd': 'pytest --color=no -rA -W ignore'
     }
     for k in ["4.0"]
 })
@@ -139,7 +139,7 @@ ASTROPY_CONFIG.update({
         "conda_env": 'astropy_41',
         "pre_install": ["""sed -i 's/requires = \["setuptools",/requires = \["setuptools==68.0.0",/' pyproject.toml""", """sed -i 's/^qt_no_exception_capture = 1$/; qt_no_exception_capture = 1/' setup.cfg""", """sed -i '/setuptools==68.0.0",/a \    "markupsafe==2.0.1",' pyproject.tomlsed -i '/setuptools==68.0.0",/a \    "markupsafe==2.0.1",' pyproject.toml"""],
         "install": "python -m pip install -e .[test] --verbose",
-        'test_cmd': 'pytest --color=no -rA'
+        'test_cmd': 'pytest --color=no -rA -W ignore'
     }
     for k in ["4.1"]
 })
@@ -148,7 +148,7 @@ ASTROPY_CONFIG.update({
         "conda_env": 'astropy_42',
         "pre_install": ["""sed -i 's/requires = \["setuptools",/requires = \["setuptools==68.0.0",/' pyproject.toml""", """sed -i '/setuptools==68.0.0",/a \    "markupsafe==2.0.1",' pyproject.tomlsed -i '/setuptools==68.0.0",/a \    "markupsafe==2.0.1",' pyproject.toml"""],
         "install": "python -m pip install -e .[test] --verbose",
-        'test_cmd': 'pytest --color=no -rA'
+        'test_cmd': 'pytest --color=no -rA -W ignore'
     }
     for k in ["4.2", "4.3", "5.0", "5.1"]
 })
@@ -158,7 +158,7 @@ ASTROPY_CONFIG.update({
         "conda_env": 'astropy_52',
         "pre_install": ["""sed -i 's/requires = \["setuptools",/requires = \["setuptools==68.0.0",/' pyproject.toml"""],
         "install": "python -m pip install -e .[test] --verbose",
-        'test_cmd': 'pytest --color=no -rA'
+        'test_cmd': 'pytest --color=no -rA -W ignore'
     }
     for k in ["5.2", "5.3", "6.0", "6.1", "7.0"]
 })

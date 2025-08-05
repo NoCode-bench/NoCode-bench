@@ -10,6 +10,7 @@ from pathlib import Path, PurePosixPath
 from threading import Lock
 from tqdm import tqdm
 from unidiff import PatchSet
+import shlex
 
 import utils.docker_utils as du
 from construction.filter_execution.constants import *
@@ -166,10 +167,30 @@ def run_instance(
         def run_tests_in_parallel(container, test_files, config, work_dir, timeout, logger, test_type):
             results = [None] * len(test_files)
 
+            def format_django_test_name(test_str):
+                match = re.match(r"(.*?)\s+\((.*?)\)", test_str)
+                if match:
+                    method_name, class_path = match.groups()
+                    return f"{class_path}.{method_name}"
+                return test_str
+
             def run_test(index, test_file):
                 logger.info(f'begin to run {test_type}: {test_file}')
-                test_cmd = f"conda run -n {config['conda_env'].strip()} {config['test_cmd'].strip()} {test_file}"
-                cmd_res = du.exec_run_with_timeout(container=container, cmd=test_cmd, workdir=work_dir, timeout=timeout)
+                if "django" in config['conda_env']:
+                    test_file = format_django_test_name(test_file)
+                    test_file_escaped = f'"{test_file}"'
+                else:
+                    test_file_escaped = shlex.quote(test_file)
+                test_cmd = f"conda run -n {config['conda_env'].strip()} {config['test_cmd'].strip()} {test_file_escaped}"
+                if "sphinx" in config['conda_env']:
+                    clean_cmd = "sudo rm -rf /root/sphinx/.tox/py37"
+                    clean_res = du.exec_run_with_timeout(container=container, cmd=clean_cmd, workdir=work_dir, timeout=timeout)
+                cmd_res = du.exec_run_with_timeout(
+                    container=container,
+                    cmd=test_cmd,
+                    workdir=work_dir,
+                    timeout=timeout
+                )
                 results[index] = cmd_res[0]
                 logger.info(f"test log: {cmd_res}")
 
@@ -357,13 +378,8 @@ def eval_instances(args):
     reports_record = {r['instance_id']: r for r in reports if r}
     predictions_record = {p['instance_id']: p for p in predictions if p}
 
-    fpt_rate = 0  # Full pass test rate
-    rt_rate = 0  # Regression test rate
-    fp_apply_rate = 0  # Feature patch apply rate
-    fv_macro_scores = []
-    fv_micro_scores = [0, 0]
     final_results_to_write = []
-    
+
     # If processing only unresolved cases, first load existing evaluation_details file
     output_fpath = os.path.join(args.log_dir, 'evaluation_details.jsonl')
     existing_results = {}
@@ -373,13 +389,13 @@ def eval_instances(args):
         # Initialize final_results_to_write with existing results
         final_results_to_write = list(existing_results.values())
 
+    # Process all tasks
     for task in all_tasks:
         instance_id = task['instance_id']
-        
-        # If in unresolved case mode and the instance already exists in the results and is resolved, skip it
+
+        # If we're updating unresolved cases and this instance already exists, skip processing
         if args.unresolved_only and instance_id in existing_results:
-            if existing_results[instance_id].get("resolved", False):
-                continue
+            continue
 
         if instance_id in reports_record:
             report = reports_record[instance_id]
@@ -389,18 +405,9 @@ def eval_instances(args):
                 if report['feature_patch_applied']:
                     patch_applied = True
             else:
-                if instance_id in predictions_record:
-                    prediction = predictions_record[instance_id]
-                    
-                    # Determine based on whether using gold patch
-                    if args.gold:
-                        patch_applied = task.get('feature_patch') is not None
-                    else:
-                        if prediction.get('model_patch'):
-                            patch_applied = True
-
-            if patch_applied:
-                fp_apply_rate += 1
+                # Determine based on whether using gold patch
+                if args.gold:
+                    patch_applied = True
 
             result = eval_instance(task, report)
 
@@ -408,34 +415,20 @@ def eval_instances(args):
                 continue
 
             p2p_success = not result['p2p']['failure']
-            if p2p_success:
-                rt_rate += 1
-
             f2p_success = not result['f2p']['failure']
             resolved = p2p_success and f2p_success
-            if resolved:
-                fpt_rate += 1
 
             instance_eval_details = {
                 "instance_id": instance_id,
                 "resolved": resolved,
                 "applied": patch_applied,
-                "model_patch": predictions_record[instance_id].get('model_patch', '') if not args.gold else task.get('feature_patch'),
+                "model_patch": predictions_record[instance_id].get('model_patch', '') if not args.gold else task.get(
+                    'feature_patch'),
                 "P2P": result.get('p2p', {}),
                 "F2P": result.get('f2p', {})
             }
 
-            total_f2p_tests = len(result['f2p']['success']) + len(result['f2p']['failure'])
-            if total_f2p_tests > 0:
-                instance_macro_score = len(result['f2p']['success']) / total_f2p_tests
-            else:
-                instance_macro_score = 1.0
-
-            fv_macro_scores.append(instance_macro_score)
-            fv_micro_scores[0] += len(result['f2p']['success'])
-            fv_micro_scores[1] += total_f2p_tests
-            
-            # In unresolved case mode, update existing results
+            # Update existing results if using unresolved_only mode
             if args.unresolved_only and instance_id in existing_results:
                 for i, item in enumerate(final_results_to_write):
                     if item["instance_id"] == instance_id:
@@ -443,9 +436,9 @@ def eval_instances(args):
                         break
             else:
                 final_results_to_write.append(instance_eval_details)
-                
+
         elif not (args.unresolved_only and instance_id in existing_results):
-            # Only add new entries if not in existing results or not in unresolved case mode
+            # Only add new entries if not in existing results
             resolved = False
 
             instance_eval_details = {
@@ -456,14 +449,58 @@ def eval_instances(args):
                 "F2P": {"success": [], "fail": task.get('FAIL2PASS', [])}
             }
 
-            fv_macro_scores.append(0.0)
-            fv_micro_scores[1] += len(task.get('FAIL2PASS', []))
-            
             final_results_to_write.append(instance_eval_details)
 
     total_instances = len(all_tasks)
+
+    fpt_rate = sum(1 for r in final_results_to_write if r.get("resolved", False))
+
+    # RT rate
+    rt_rate = 0
+    for r in final_results_to_write:
+        p2p_data = r.get("P2P", {})
+        # 检查P2P是否有失败
+        has_p2p_failure = (
+                p2p_data.get("failure") or
+                p2p_data.get("fail") or
+                len(p2p_data.get("failure", [])) > 0 or
+                len(p2p_data.get("fail", [])) > 0
+        )
+        if not has_p2p_failure:
+            rt_rate += 1
+
+    fp_apply_rate = sum(1 for r in final_results_to_write if r.get("applied", False))
+
+    # FV-Micro
+    fv_micro_ok = 0
+    fv_micro_all = 0
+    for r in final_results_to_write:
+        f2p_data = r.get("F2P", {})
+        success_count = len(f2p_data.get("success", []))
+        failure_count = len(f2p_data.get("failure", [])) + len(f2p_data.get("fail", []))
+
+        fv_micro_ok += success_count
+        fv_micro_all += success_count + failure_count
+
+    fv_micro_score = fv_micro_ok / fv_micro_all if fv_micro_all > 0 else 0
+
+    # FV-Macro
+    fv_macro_scores = []
+    for r in final_results_to_write:
+        f2p_data = r.get("F2P", {})
+        success_count = len(f2p_data.get("success", []))
+        failure_count = len(f2p_data.get("failure", [])) + len(f2p_data.get("fail", []))
+        total_f2p = success_count + failure_count
+
+        if total_f2p > 0:
+            instance_score = success_count / total_f2p
+        else:
+            instance_score = 1.0
+        fv_macro_scores.append(instance_score)
+
     fv_macro_score = sum(fv_macro_scores) / len(fv_macro_scores) if fv_macro_scores else 0
-    fv_micro_score = fv_micro_scores[0] / fv_micro_scores[1] if fv_micro_scores[1] > 0 else 0
+
+    # ----------------------------------------
 
     summary_lines = [
         "-" * 30,
@@ -473,9 +510,9 @@ def eval_instances(args):
         f"Total Instances: {total_instances}",
         f"Submitted Instances: {len(reports_record)}",
         f"Applied%: {fp_apply_rate / total_instances:.2%} ({fp_apply_rate} / {total_instances})",
-        f"Resolved% : {fpt_rate / total_instances:.2%} ({fpt_rate} / {total_instances})",
+        f"Success%: {fpt_rate / total_instances:.2%} ({fpt_rate} / {total_instances})",
         f"Regression Test (RT%): {rt_rate / total_instances:.2%} ({rt_rate} / {total_instances})",
-        f"FV-Micro: {fv_micro_score:.4f} ({fv_micro_scores[0]} / {fv_micro_scores[1]})",
+        f"FV-Micro: {fv_micro_score:.4f} ({fv_micro_ok} / {fv_micro_all})",
         f"FV-Macro: {fv_macro_score:.4f}",
     ]
     summary_report_str = "\n".join(summary_lines)
@@ -489,11 +526,6 @@ def eval_instances(args):
     with open(summary_output_fpath, 'w', encoding='utf-8') as f:
         f.write(summary_report_str)
     print(f"Summary report saved to: {summary_output_fpath}")
-
-
-def write_content(fpath, content):
-    with open(fpath, 'w') as f:
-        f.write(content)
 
 
 def eval_file_localization(args):
@@ -594,10 +626,11 @@ if __name__ == "__main__":
     parser.add_argument("--output_file", type=str, default=None,
                         help="(Optional) Path to save detailed evaluation results (.jsonl).")
     parser.add_argument("--timeout", type=int, help="(Optional) Timeout in seconds (default: 600)", default=600)
-    parser.add_argument("--max_workers", type=int, help="(Optional) Max workers (default: 10)", default=1)
+    parser.add_argument("--max_workers", type=int, help="(Optional) Max workers (default: 1)", default=1)
     parser.add_argument("--proxy", type=str, help="(Optional) Http proxy (default: None)", default=None)
-    parser.add_argument("--gold", action="store_true", help="Use golden patch (feature_patch) from dataset instead of model predictions")
-    parser.add_argument("--unresolved_only", action="store_true", help="Only run unresolved tasks from previous evaluation")
+    parser.add_argument("--gold", action="store_true", help="(Optional) Use golden patch (feature_patch) from dataset instead of model predictions")
+    parser.add_argument("--unresolved_only", action="store_true", help="(Optional) Only run unresolved tasks from previous evaluation")
 
     args = parser.parse_args()
     main(args)
+
