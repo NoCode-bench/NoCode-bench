@@ -64,8 +64,20 @@ def run_instance(
     }
     try:
         if image_level == 'repo':
-            # build container
             container_name = f'{image_name}__{instance_id}'
+            try:
+                existing_container = client.containers.get(container_name)
+                logger.info(f"Found container with the same name {container_name} running, forcibly stopping and removing it")
+                existing_container.stop(timeout=0)  # Force immediate stop
+                existing_container.remove(force=True)
+                logger.info(f"Successfully removed container with the same name {container_name}")
+            except docker.errors.NotFound:
+                # Container doesn't exist, continue normal flow
+                pass
+            except Exception as e:
+                logger.error(f"Error cleaning up container with the same name: {str(e)}")
+            
+            # build container
             container = du.build_container(image_name=f'{image_name}:dev', container_name=container_name, client=client,
                                            logger=logger, proxy=proxy)
             container.start()
@@ -97,8 +109,21 @@ def run_instance(
                                          workdir=work_dir)
 
         else:
-            # build container
+            # Check if container with the same name exists and clean it up
             container_name = f'{image_name}__{instance_id}'
+            try:
+                existing_container = client.containers.get(container_name)
+                logger.info(f"Found container with the same name {container_name} running, forcibly stopping and removing it")
+                existing_container.stop(timeout=0)  # Force immediate stop
+                existing_container.remove(force=True)
+                logger.info(f"Successfully removed container with the same name {container_name}")
+            except docker.errors.NotFound:
+                # Container doesn't exist, continue normal flow
+                pass
+            except Exception as e:
+                logger.error(f"Error cleaning up container with the same name: {str(e)}")
+                
+            # build container
             container = du.build_container(image_name=f'ncbench_{instance_id}:latest', container_name=container_name, client=client,
                                            logger=logger, proxy=proxy)
             container.start()
@@ -156,15 +181,15 @@ def run_instance(
 
             return results
 
-        # 并行执行f2p测试
+        # Run f2p tests in parallel
         logger.info(f'begin to run f2p tests')
         f2p_results = run_tests_in_parallel(container, f2p, config, work_dir, 600, logger, 'f2p')
 
-        # 并行执行p2p测试
+        # Run p2p tests in parallel
         logger.info(f'begin to run p2p tests')
         p2p_results = run_tests_in_parallel(container, p2p, config, work_dir, 600, logger, 'p2p')
 
-        # 更新测试结果
+        # Update test results
         test_results.update({
             'f2p': f2p_results,
             'p2p': p2p_results
@@ -198,7 +223,7 @@ def eval_instance(task, report):
     try:
         tests_record = {i[1]: i[0] for i in all_results}
     except:
-        return
+        return None
     f2p_success = []
     f2p_failure = []
     for test_case in task['FAIL2PASS']:
@@ -237,14 +262,10 @@ def eval_instance(task, report):
 def run_instances(args):
     # two loggers: one tatol, one per test
     os.makedirs(args.log_dir, exist_ok=True)
-    reports_fpath = os.path.join(args.log_dir, '0reports.jsonl')
     detail_path = os.path.join(args.log_dir, 'evaluation_details.jsonl')
-    prev_reports = []
     prev_instance = []
     if os.path.exists(detail_path):
         prev_instance = load_jsonl(detail_path)
-    if os.path.exists(reports_fpath):
-        prev_reports = load_jsonl(reports_fpath)
     existing = {i['instance_id']: i for i in prev_instance}
     logger = get_logger(log_name='eval', log_file=os.path.join(args.log_dir, '0eval.log'))
     logger.info(args)
@@ -254,11 +275,24 @@ def run_instances(args):
     logger.info(f'Loaded {len(tasks)} tasks')
     predictions = load_jsonl(args.predictions_path)
     client = docker.from_env()
+    if args.gold:
+        predictions = tasks
+    
+    # Filter out unresolved tasks
+    if args.unresolved_only and os.path.exists(detail_path):
+        unresolved_ids = set()
+        for instance in prev_instance:
+            if not instance.get('resolved', False):
+                unresolved_ids.add(instance['instance_id'])
+        
+        # Only keep unresolved tasks
+        predictions = [pred for pred in predictions if pred['instance_id'] in unresolved_ids]
+        logger.info(f'Filtered to {len(predictions)} unresolved tasks')
 
     def process_instance(pred, tasks_record, write_lock=None):
         instance_id = pred['instance_id']
 
-        if instance_id in existing:
+        if instance_id in existing and not args.unresolved_only:
             logger.info(f"Skipping existing instance_id: {instance_id}")
             return
         task = tasks_record[instance_id]
@@ -291,6 +325,7 @@ def run_instances(args):
                 f.write(json.dumps(report) + '\n')
 
     # run evaluation and store results in reports_fapth
+    reports_fpath = os.path.join(args.log_dir, '0reports.jsonl')
     write_lock = Lock()
     if args.max_workers == 1:
         for pred in tqdm(predictions):
@@ -328,9 +363,23 @@ def eval_instances(args):
     fv_macro_scores = []
     fv_micro_scores = [0, 0]
     final_results_to_write = []
+    
+    # If processing only unresolved cases, first load existing evaluation_details file
+    output_fpath = os.path.join(args.log_dir, 'evaluation_details.jsonl')
+    existing_results = {}
+    if args.unresolved_only and os.path.exists(output_fpath):
+        existing_details = load_jsonl(output_fpath)
+        existing_results = {item["instance_id"]: item for item in existing_details}
+        # Initialize final_results_to_write with existing results
+        final_results_to_write = list(existing_results.values())
 
     for task in all_tasks:
         instance_id = task['instance_id']
+        
+        # If in unresolved case mode and the instance already exists in the results and is resolved, skip it
+        if args.unresolved_only and instance_id in existing_results:
+            if existing_results[instance_id].get("resolved", False):
+                continue
 
         if instance_id in reports_record:
             report = reports_record[instance_id]
@@ -343,7 +392,7 @@ def eval_instances(args):
                 if instance_id in predictions_record:
                     prediction = predictions_record[instance_id]
                     
-                    # 根据是否使用黄金补丁来判断
+                    # Determine based on whether using gold patch
                     if args.gold:
                         patch_applied = task.get('feature_patch') is not None
                     else:
@@ -369,9 +418,9 @@ def eval_instances(args):
 
             instance_eval_details = {
                 "instance_id": instance_id,
-                "model_patch": predictions_record[instance_id].get('model_patch', ''),
                 "resolved": resolved,
                 "applied": patch_applied,
+                "model_patch": predictions_record[instance_id].get('model_patch', '') if not args.gold else task.get('feature_patch'),
                 "P2P": result.get('p2p', {}),
                 "F2P": result.get('f2p', {})
             }
@@ -385,7 +434,18 @@ def eval_instances(args):
             fv_macro_scores.append(instance_macro_score)
             fv_micro_scores[0] += len(result['f2p']['success'])
             fv_micro_scores[1] += total_f2p_tests
-        else:
+            
+            # In unresolved case mode, update existing results
+            if args.unresolved_only and instance_id in existing_results:
+                for i, item in enumerate(final_results_to_write):
+                    if item["instance_id"] == instance_id:
+                        final_results_to_write[i] = instance_eval_details
+                        break
+            else:
+                final_results_to_write.append(instance_eval_details)
+                
+        elif not (args.unresolved_only and instance_id in existing_results):
+            # Only add new entries if not in existing results or not in unresolved case mode
             resolved = False
 
             instance_eval_details = {
@@ -398,8 +458,8 @@ def eval_instances(args):
 
             fv_macro_scores.append(0.0)
             fv_micro_scores[1] += len(task.get('FAIL2PASS', []))
-
-        final_results_to_write.append(instance_eval_details)
+            
+            final_results_to_write.append(instance_eval_details)
 
     total_instances = len(all_tasks)
     fv_macro_score = sum(fv_macro_scores) / len(fv_macro_scores) if fv_macro_scores else 0
@@ -421,7 +481,6 @@ def eval_instances(args):
     summary_report_str = "\n".join(summary_lines)
     print(summary_report_str)
 
-    output_fpath = os.path.join(args.log_dir, 'evaluation_details.jsonl')
     dump_jsonl(final_results_to_write, output_fpath)
     print(f"Detailed evaluation results saved to: {output_fpath}")
 
@@ -538,7 +597,7 @@ if __name__ == "__main__":
     parser.add_argument("--max_workers", type=int, help="(Optional) Max workers (default: 10)", default=1)
     parser.add_argument("--proxy", type=str, help="(Optional) Http proxy (default: None)", default=None)
     parser.add_argument("--gold", action="store_true", help="Use golden patch (feature_patch) from dataset instead of model predictions")
+    parser.add_argument("--unresolved_only", action="store_true", help="Only run unresolved tasks from previous evaluation")
 
     args = parser.parse_args()
     main(args)
-
