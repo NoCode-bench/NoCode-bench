@@ -12,13 +12,6 @@ import docker
 from tqdm import tqdm
 from unidiff import PatchSet
 
-# # 获取当前脚本所在的目录，并向上导航到父目录
-# current_dir = os.path.dirname(os.path.abspath(__file__))
-# parent_dir = os.path.dirname(current_dir)
-
-# # 将父目录添加到sys.path
-# if parent_dir not in sys.path:
-#     sys.path.append(parent_dir)
     
 from utils.logger import get_logger
 from utils.utils import load_jsonl, PatchTools, dump_jsonl, run_cmd, run_cmd_with_err
