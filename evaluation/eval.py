@@ -263,13 +263,16 @@ def run_instances(args):
             return
         task = tasks_record[instance_id]
         repo_name = task['repo'].split('/')[-1]
+
+        feature_patch = task['feature_patch'] if args.gold else pred['model_patch']
+        
         try:
             report = run_instance(
                 instance_id=pred['instance_id'],
                 image_name=f'fb_{repo_name}',
                 commit_id=task['base_commit'],
                 test_patch=task['test_patch'],
-                feature_patch=pred['model_patch'],
+                feature_patch=feature_patch,
                 version=task['version'],
                 repo=task['repo'],
                 p2p=task['PASS2PASS'],
@@ -337,12 +340,15 @@ def eval_instances(args):
                 if report['feature_patch_applied']:
                     patch_applied = True
             else:
-
                 if instance_id in predictions_record:
                     prediction = predictions_record[instance_id]
-
-                    if prediction.get('model_patch'):
-                        patch_applied = True
+                    
+                    # 根据是否使用黄金补丁来判断
+                    if args.gold:
+                        patch_applied = task.get('feature_patch') is not None
+                    else:
+                        if prediction.get('model_patch'):
+                            patch_applied = True
 
             if patch_applied:
                 fp_apply_rate += 1
@@ -531,6 +537,8 @@ if __name__ == "__main__":
     parser.add_argument("--timeout", type=int, help="(Optional) Timeout in seconds (default: 600)", default=600)
     parser.add_argument("--max_workers", type=int, help="(Optional) Max workers (default: 10)", default=1)
     parser.add_argument("--proxy", type=str, help="(Optional) Http proxy (default: None)", default=None)
+    parser.add_argument("--gold", action="store_true", help="Use golden patch (feature_patch) from dataset instead of model predictions")
 
     args = parser.parse_args()
     main(args)
+
