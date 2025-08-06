@@ -182,9 +182,13 @@ def run_instance(
                 else:
                     test_file_escaped = shlex.quote(test_file)
                 test_cmd = f"conda run -n {config['conda_env'].strip()} {config['test_cmd'].strip()} {test_file_escaped}"
+
                 if "sphinx" in config['conda_env']:
-                    clean_cmd = "sudo rm -rf /root/sphinx/.tox/py37"
-                    clean_res = du.exec_run_with_timeout(container=container, cmd=clean_cmd, workdir=work_dir, timeout=timeout)
+                    clean_cmd = "sudo rm -rf /root/sphinx/.tox/py*"
+                    clean_res = du.exec_run_with_timeout(container=container, cmd=clean_cmd, workdir=work_dir,
+                                                         timeout=timeout)
+                    logger.info(f"Sphinx cleanup completed for test {index}: {clean_res}")
+
                 cmd_res = du.exec_run_with_timeout(
                     container=container,
                     cmd=test_cmd,
@@ -194,11 +198,19 @@ def run_instance(
                 results[index] = cmd_res[0]
                 logger.info(f"test log: {cmd_res}")
 
-            min_worker = min(25, len(test_files)) if len(test_files) > 0 else 1
-            with ThreadPoolExecutor(max_workers=min_worker) as executor:
-                futures = [executor.submit(run_test, i, test_file) for i, test_file in enumerate(test_files)]
-                for future in as_completed(futures):
-                    future.result()
+            is_sphinx = "sphinx" in config['conda_env']
+
+            if is_sphinx:
+                logger.info("Sphinx environment detected, running tests sequentially to avoid tox conflicts")
+                for i, test_file in enumerate(test_files):
+                    run_test(i, test_file)
+            else:
+                min_worker = min(25, len(test_files)) if len(test_files) > 0 else 1
+                logger.info(f"Running tests in parallel with {min_worker} workers")
+                with ThreadPoolExecutor(max_workers=min_worker) as executor:
+                    futures = [executor.submit(run_test, i, test_file) for i, test_file in enumerate(test_files)]
+                    for future in as_completed(futures):
+                        future.result()
 
             return results
 
@@ -281,7 +293,7 @@ def eval_instance(task, report):
 
 
 def run_instances(args):
-    # two loggers: one tatol, one per test
+    # two loggers: one total, one per test
     os.makedirs(args.log_dir, exist_ok=True)
     detail_path = os.path.join(args.log_dir, 'evaluation_details.jsonl')
     prev_instance = []
@@ -290,22 +302,24 @@ def run_instances(args):
     existing = {i['instance_id']: i for i in prev_instance}
     logger = get_logger(log_name='eval', log_file=os.path.join(args.log_dir, '0eval.log'))
     logger.info(args)
-    # tasks = load_jsonl(args.bench_tasks)
-    tasks = load_dataset(args.bench_tasks, split='test')
+    if 'jsonl' in args.bench_tasks:
+        tasks = load_jsonl(args.bench_tasks)
+    else:
+        tasks = load_dataset(args.bench_tasks, split='test')
     tasks_record = {i['instance_id']: i for i in tasks}
     logger.info(f'Loaded {len(tasks)} tasks')
     predictions = load_jsonl(args.predictions_path)
     client = docker.from_env()
     if args.gold:
         predictions = tasks
-    
+
     # Filter out unresolved tasks
     if args.unresolved_only and os.path.exists(detail_path):
         unresolved_ids = set()
         for instance in prev_instance:
             if not instance.get('resolved', False):
                 unresolved_ids.add(instance['instance_id'])
-        
+
         # Only keep unresolved tasks
         predictions = [pred for pred in predictions if pred['instance_id'] in unresolved_ids]
         logger.info(f'Filtered to {len(predictions)} unresolved tasks')
@@ -320,7 +334,7 @@ def run_instances(args):
         repo_name = task['repo'].split('/')[-1]
 
         feature_patch = task['feature_patch'] if args.gold else pred['model_patch']
-        
+
         try:
             report = run_instance(
                 instance_id=pred['instance_id'],
@@ -365,8 +379,10 @@ def run_instances(args):
 
 
 def eval_instances(args):
-    # all_tasks = load_jsonl(args.bench_tasks)
-    all_tasks = load_dataset(args.bench_tasks, split='test')
+    if 'jsonl' in args.bench_tasks:
+        all_tasks = load_jsonl(args.bench_tasks)
+    else:
+        all_tasks = load_dataset(args.bench_tasks, split='test')
     reports_fpath = os.path.join(args.log_dir, '0reports.jsonl')
     if os.path.exists(reports_fpath):
         reports = load_jsonl(reports_fpath)
@@ -376,38 +392,40 @@ def eval_instances(args):
     predictions = load_jsonl(args.predictions_path)
 
     reports_record = {r['instance_id']: r for r in reports if r}
-    predictions_record = {p['instance_id']: p for p in predictions if p}
+    if args.gold:
+        predictions_record = {t['instance_id']: t for t in all_tasks}
+    else:
+        predictions_record = {p['instance_id']: p for p in predictions if p}
 
-    final_results_to_write = []
-
-    # If processing only unresolved cases, first load existing evaluation_details file
+    # ==== Phase 1: Process and save results ====
     output_fpath = os.path.join(args.log_dir, 'evaluation_details.jsonl')
+
+    # Load existing results (if any)
     existing_results = {}
     if args.unresolved_only and os.path.exists(output_fpath):
         existing_details = load_jsonl(output_fpath)
         existing_results = {item["instance_id"]: item for item in existing_details}
-        # Initialize final_results_to_write with existing results
-        final_results_to_write = list(existing_results.values())
 
-    # Process all tasks
+    # Process all tasks, build final results list
+    final_results_to_write = []
+    newly_processed_instances = set()  # Track instances processed in this run
+
     for task in all_tasks:
         instance_id = task['instance_id']
 
-        # If we're updating unresolved cases and this instance already exists, skip processing
+        # If in unresolved_only mode and instance exists, skip processing but keep existing results
         if args.unresolved_only and instance_id in existing_results:
+            final_results_to_write.append(existing_results[instance_id])
             continue
 
+        # Process new instances or reprocess all instances
         if instance_id in reports_record:
             report = reports_record[instance_id]
 
-            patch_applied = False
-            if 'feature_patch_applied' in report:
-                if report['feature_patch_applied']:
-                    patch_applied = True
-            else:
-                # Determine based on whether using gold patch
-                if args.gold:
-                    patch_applied = True
+            patch_applied = report.get('feature_patch_applied', False)
+            
+            if args.gold and 'feature_patch_applied' not in report:
+                patch_applied = True
 
             result = eval_instance(task, report)
 
@@ -418,27 +436,27 @@ def eval_instances(args):
             f2p_success = not result['f2p']['failure']
             resolved = p2p_success and f2p_success
 
+            model_patch = ''
+            if args.gold:
+                model_patch = task.get('feature_patch', '')
+            else:
+                if instance_id in predictions_record:
+                    model_patch = predictions_record[instance_id].get('model_patch', '')
+
             instance_eval_details = {
                 "instance_id": instance_id,
                 "resolved": resolved,
                 "applied": patch_applied,
-                "model_patch": predictions_record[instance_id].get('model_patch', '') if not args.gold else task.get(
-                    'feature_patch'),
+                "model_patch": model_patch,
                 "P2P": result.get('p2p', {}),
                 "F2P": result.get('f2p', {})
             }
 
-            # Update existing results if using unresolved_only mode
-            if args.unresolved_only and instance_id in existing_results:
-                for i, item in enumerate(final_results_to_write):
-                    if item["instance_id"] == instance_id:
-                        final_results_to_write[i] = instance_eval_details
-                        break
-            else:
-                final_results_to_write.append(instance_eval_details)
+            newly_processed_instances.add(instance_id)
+            final_results_to_write.append(instance_eval_details)
 
-        elif not (args.unresolved_only and instance_id in existing_results):
-            # Only add new entries if not in existing results
+        else:
+            # Instances without reports
             resolved = False
 
             instance_eval_details = {
@@ -449,17 +467,34 @@ def eval_instances(args):
                 "F2P": {"success": [], "fail": task.get('FAIL2PASS', [])}
             }
 
+            newly_processed_instances.add(instance_id)
             final_results_to_write.append(instance_eval_details)
 
+    # Save results to file
+    dump_jsonl(final_results_to_write, output_fpath)
+    print(f"Detailed evaluation results saved to: {output_fpath}")
+
+    # ==== Phase 2: Read data from saved file and calculate metrics ====
+    saved_results = load_jsonl(output_fpath)
+
+    # Scope explanation for metrics calculation
     total_instances = len(all_tasks)
+    if args.unresolved_only:
+        newly_processed_count = len(newly_processed_instances)
+        scope_description = f"Unresolved Only Mode (Processed {newly_processed_count} instances this run, Total {total_instances} instances)"
+    else:
+        scope_description = f"All Instances Mode (Total {total_instances} instances)"
 
-    fpt_rate = sum(1 for r in final_results_to_write if r.get("resolved", False))
+    # Calculate metrics based on saved results
+    submitted_instances = len([r for r in saved_results if r['instance_id'] in reports_record])
 
-    # RT rate
+    # FPT rate: Count of completely resolved instances
+    fpt_rate = sum(1 for r in saved_results if r.get("resolved", False))
+
+    # RT rate: Count of instances without P2P failures
     rt_rate = 0
-    for r in final_results_to_write:
+    for r in saved_results:
         p2p_data = r.get("P2P", {})
-        # 检查P2P是否有失败
         has_p2p_failure = (
                 p2p_data.get("failure") or
                 p2p_data.get("fail") or
@@ -469,12 +504,13 @@ def eval_instances(args):
         if not has_p2p_failure:
             rt_rate += 1
 
-    fp_apply_rate = sum(1 for r in final_results_to_write if r.get("applied", False))
+    # Apply rate: Count of instances where patch was successfully applied
+    fp_apply_rate = sum(1 for r in saved_results if r.get("applied", False))
 
-    # FV-Micro
+    # FV-Micro calculation
     fv_micro_ok = 0
     fv_micro_all = 0
-    for r in final_results_to_write:
+    for r in saved_results:
         f2p_data = r.get("F2P", {})
         success_count = len(f2p_data.get("success", []))
         failure_count = len(f2p_data.get("failure", [])) + len(f2p_data.get("fail", []))
@@ -484,9 +520,9 @@ def eval_instances(args):
 
     fv_micro_score = fv_micro_ok / fv_micro_all if fv_micro_all > 0 else 0
 
-    # FV-Macro
+    # FV-Macro calculation
     fv_macro_scores = []
-    for r in final_results_to_write:
+    for r in saved_results:
         f2p_data = r.get("F2P", {})
         success_count = len(f2p_data.get("success", []))
         failure_count = len(f2p_data.get("failure", [])) + len(f2p_data.get("fail", []))
@@ -495,37 +531,39 @@ def eval_instances(args):
         if total_f2p > 0:
             instance_score = success_count / total_f2p
         else:
-            instance_score = 1.0
+            instance_score = 1.0  # Perfect score if no tests
         fv_macro_scores.append(instance_score)
 
     fv_macro_score = sum(fv_macro_scores) / len(fv_macro_scores) if fv_macro_scores else 0
 
-    # ----------------------------------------
-
+    # ==== Phase 3: Generate and output report ====
     summary_lines = [
         "-" * 30,
         f"{args.predictions_path}",
-        "Evaluation Results",
+        f"Evaluation Results - {scope_description}",
         "-" * 30,
         f"Total Instances: {total_instances}",
-        f"Submitted Instances: {len(reports_record)}",
-        f"Applied%: {fp_apply_rate / total_instances:.2%} ({fp_apply_rate} / {total_instances})",
-        f"Success%: {fpt_rate / total_instances:.2%} ({fpt_rate} / {total_instances})",
-        f"Regression Test (RT%): {rt_rate / total_instances:.2%} ({rt_rate} / {total_instances})",
+        f"Submitted Instances: {submitted_instances}",
+        f"Applied%: {fp_apply_rate / total_instances:.2%} ({fp_apply_rate} / {total_instances})" if total_instances > 0 else "Applied%: 0.00% (0 / 0)",
+        f"Success%: {fpt_rate / total_instances:.2%} ({fpt_rate} / {total_instances})" if total_instances > 0 else "Resolved%: 0.00% (0 / 0)",
+        f"Regression Test (RT%): {rt_rate / total_instances:.2%} ({rt_rate} / {total_instances})" if total_instances > 0 else "RT%: 0.00% (0 / 0)",
         f"FV-Micro: {fv_micro_score:.4f} ({fv_micro_ok} / {fv_micro_all})",
         f"FV-Macro: {fv_macro_score:.4f}",
     ]
+
+    if args.unresolved_only and newly_processed_instances:
+        summary_lines.extend([
+            "-" * 30,
+            f"This Run Details:",
+            f"Newly Processed Instances: {len(newly_processed_instances)}",
+        ])
+
     summary_report_str = "\n".join(summary_lines)
     print(summary_report_str)
 
-    dump_jsonl(final_results_to_write, output_fpath)
-    print(f"Detailed evaluation results saved to: {output_fpath}")
-
     summary_output_fpath = args.output_file if args.output_file else f'{args.predictions_path.split(".")[0]}_summary_report.txt'
-
     with open(summary_output_fpath, 'w', encoding='utf-8') as f:
         f.write(summary_report_str)
-    print(f"Summary report saved to: {summary_output_fpath}")
 
 
 def eval_file_localization(args):
@@ -533,9 +571,10 @@ def eval_file_localization(args):
     Evaluate file-level and patch-level localization, then append the
     results to the same *_summary_report.txt produced in eval_instances.
     """
-    # ---------- build reference mapping ----------
-    # tasks = load_jsonl(args.bench_tasks)
-    tasks = load_dataset(args.bench_tasks, split='test')
+    if 'jsonl' in args.bench_tasks:
+        tasks = load_jsonl(args.bench_tasks)
+    else:
+        tasks = load_dataset(args.bench_tasks, split='test')
     tasks_record = {}
     for task in tasks:
         gt_patch_set = PatchSet(task['feature_patch'])
@@ -544,11 +583,9 @@ def eval_file_localization(args):
 
     eval_levels = ['patch', 'file'] if args.fl_level == 'both' else [args.fl_level]
 
-    # ---------- statistics holders ----------
     fl_patch_success = fl_patch_total = 0
     fl_file_success = fl_file_total = 0
 
-    # ---------- patch-level localization ----------
     if 'patch' in eval_levels:
         predictions = load_jsonl(args.predictions_path)
         fl_patch_total = len(predictions)
@@ -570,7 +607,6 @@ def eval_file_localization(args):
             else:
                 wrong_ids.add(iid)
 
-    # ---------- file-level localization ----------
     if 'file' in eval_levels and args.fl_predictions_path:
         fl_preds = load_jsonl(args.fl_predictions_path)
         fl_file_total = len(fl_preds)
@@ -582,7 +618,6 @@ def eval_file_localization(args):
             if set(tasks_record[iid]).issubset(set(prediction['found_files'])):
                 fl_file_success += 1
 
-    # ---------- append summary to report ----------
     summary_path = (
         args.output_file
         if args.output_file
@@ -619,8 +654,7 @@ if __name__ == "__main__":
     parser.add_argument("--predictions_path", type=str, help="Path to predictions file (must be .jsonl)", required=True)
     parser.add_argument("--fl_predictions_path", type=str, help="Path to fl predictions file (must be .jsonl)")
     parser.add_argument("--log_dir", type=str, help="Path to log directory", required=True)
-    parser.add_argument("--bench_tasks", type=str, help="Path to benchmark task instances file", required=True,
-                        choices=['NoCode-bench/NoCode-bench_Verified', 'NoCode-bench/NoCode-bench_Full'])
+    parser.add_argument("--bench_tasks", type=str, help="Path to benchmark task instances file", required=True)
     parser.add_argument("--fl_level", type=str, choices=['patch', 'file', 'both'], default='patch')
     parser.add_argument("--image_level", type=str, choices=['instance', 'repo'], default='repo')
     parser.add_argument("--output_file", type=str, default=None,

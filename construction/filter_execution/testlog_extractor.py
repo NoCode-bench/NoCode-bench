@@ -1,19 +1,27 @@
 import re
 
-def extract_pytest_info(test_content, old=False):
+
+def extract_pytest_info(test_content: str, old=False):
     lines = test_content.splitlines()
     res = []
-
-    # 正则匹配状态和测试名，允许测试名中 [] 内包含空格
-    pattern = re.compile(r'^(PASSED|FAILED|ERROR|XFAIL)\s+((?:[^\[\s]+|\[[^\]]+\])+)')
-
+    option_pattern = re.compile(r"(.*?)\[(.*)\]")
     for line in lines:
-        match = pattern.match(line)
-        if match:
-            status, test_name = match.groups()
-            if status == 'ERROR' and 'conda.cli.main_run' in test_name:
-                continue
-            res.append((status, test_name))
+        parts = line.split(' ', 1)
+        if parts[0] not in ['PASSED', 'FAILED', 'ERROR', 'XFAIL']:
+            continue
+        if parts[0] == 'ERROR' and 'conda.cli.main_run' in parts[1]:
+            continue
+        has_option = option_pattern.search(parts[1])
+        if has_option:
+            main, option = has_option.groups()
+            test_name = f"{main}[{option}]"
+        else:
+            test_name = parts[1]
+
+        if 'ERROR conda.cli.main_run' in test_name:
+            test_name = test_name.split('ERROR conda.cli.main_run')[0]
+
+        res.append((parts[0], test_name))
 
     if old:
         # 旧版本格式是 "<file> <STATUS>"，比如 "test_file.py PASSED"
@@ -23,6 +31,7 @@ def extract_pytest_info(test_content, old=False):
                 res.append((parts[1], parts[0]))
 
     return res
+
 
 # -------------- old -----------------
 
