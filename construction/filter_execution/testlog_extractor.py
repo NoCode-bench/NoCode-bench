@@ -2,6 +2,47 @@ import re
 
 
 def extract_pytest_info(test_content: str, old=False):
+    test_content = re.sub(
+        r'ERROR conda\.cli\.main_run:execute\(\d+\): .*? failed\. \(See above for error\)\n',
+        '',
+        test_content
+    )
+    test_content = re.sub(
+        r'<frozen importlib._bootstrap>:241: RuntimeWarning: numpy.ndarray size changed, may indicate binary incompatibility. Expected 88 from C header, got 96 from PyObject\n\n',
+        '',
+        test_content
+    )
+
+    lines = test_content.splitlines()
+    res = []
+    option_pattern = re.compile(r"(.*?)\[(.*)\]")
+
+    for line in lines:
+        parts = line.split(' ', 1)
+        if parts[0] not in ['PASSED', 'FAILED', 'ERROR', 'XFAIL']:
+            continue
+        if parts[0] == 'ERROR' and 'conda.cli.main_run' in parts[1]:
+            continue
+        has_option = option_pattern.search(parts[1])
+        if has_option:
+            main, option = has_option.groups()
+            test_name = f"{main}[{option}]"
+        else:
+            test_name = parts[1]
+        res.append((parts[0], test_name))
+
+    if old:
+        for line in lines:
+            parts = line.split()
+            if len(parts) >= 2 and parts[1] in ['PASSED', 'ERROR', 'FAILED', 'XFAIL']:
+                res.append((parts[1], parts[0]))
+
+    return res
+
+
+# -------------- old -----------------
+
+def extract_pytest_info_v1(test_content: str, old=False):
     lines = test_content.splitlines()
     res = []
     option_pattern = re.compile(r"(.*?)\[(.*)\]")
@@ -32,8 +73,6 @@ def extract_pytest_info(test_content: str, old=False):
 
     return res
 
-
-# -------------- old -----------------
 
 def extract_pytest_info_old1(test_content, old=False):
     lines = test_content.splitlines()
