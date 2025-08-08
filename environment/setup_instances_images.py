@@ -29,6 +29,11 @@ def build_image_for_instance(task: dict,
     repo_url    = task['repo']
     repo_name   = repo_url.split('/')[-1]
     work_dir    = f'/root/{repo_name}'
+    img_repo = f'ncbench_{instance_id}'
+
+    if any(img_repo in tag for img in client.images.list(name=img_repo) for tag in img.tags):
+        print(f"Image {img_repo}:latest already exists, skipping...")
+        return
 
     logger = get_logger(instance_id,
                         os.path.join(log_dir, f'{instance_id}.log'))

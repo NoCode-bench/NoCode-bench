@@ -6,3 +6,4 @@ tqdm
 lxml
 packaging
 requests
+datasets

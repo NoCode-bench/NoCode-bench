@@ -46,12 +46,15 @@ def run_instance(
     '''
     container = None
     patch_dir = os.path.join(log_dir, "patches")
+    test_patch_dir = os.path.join(log_dir, "test_patches")
     logfile_dir = os.path.join(log_dir, "exec_logs")
 
     os.makedirs(patch_dir, exist_ok=True)
+    os.makedirs(test_patch_dir, exist_ok=True)
     os.makedirs(logfile_dir, exist_ok=True)
 
     patch_path = os.path.join(patch_dir, f'patch_{instance_id}.diff')
+    test_patch_path = os.path.join(test_patch_dir, f'test_patch_{instance_id}.diff')
     logger = get_logger(
         log_name=instance_id,
         log_file=os.path.join(logfile_dir, f'{instance_id}.log')
@@ -89,9 +92,9 @@ def run_instance(
             git_checkout_cmd = f"git checkout {commit_id}"
             container.exec_run(git_checkout_cmd, workdir=work_dir)
             # apply test patch
-            patch_file = Path(patch_path)
-            patch_file.write_text(test_patch)
-            du.copy_to_container(container, patch_file, PurePosixPath(DOCKER_PATCH))
+            test_patch_file = Path(test_patch_path)
+            test_patch_file.write_text(test_patch)
+            du.copy_to_container(container, test_patch_file, PurePosixPath(DOCKER_PATCH))
             cmd_res = container.exec_run(f"git apply {DOCKER_PATCH}", workdir=work_dir)
             if cmd_res.exit_code != 0:
                 logger.info(f"Failed to apply test patch to container")
@@ -105,9 +108,6 @@ def run_instance(
                 for pre_install_cmd in config['pre_install']:
                     cmd_res = container.exec_run(cmd=pre_install_cmd, workdir=work_dir)
 
-            # conda activate and install
-            cmd_res = container.exec_run(f"conda run -n {config['conda_env']} {config['install']}",
-                                         workdir=work_dir)
 
         else:
             # Check if container with the same name exists and clean it up
@@ -130,9 +130,9 @@ def run_instance(
             container.start()
 
             # apply test patch
-            patch_file = Path(patch_path)
-            patch_file.write_text(test_patch)
-            du.copy_to_container(container, patch_file, PurePosixPath(DOCKER_PATCH))
+            test_patch_file = Path(test_patch_path)
+            test_patch_file.write_text(test_patch)
+            du.copy_to_container(container, test_patch_file, PurePosixPath(DOCKER_PATCH))
             cmd_res = container.exec_run(f"git apply {DOCKER_PATCH}", workdir=work_dir)
             if cmd_res.exit_code != 0:
                 logger.info(f"Failed to apply test patch to container")
@@ -144,25 +144,27 @@ def run_instance(
             config = MAP_REPO_TO_CONFIG[repo][version]
 
         # apply feature patch
-        patch_file.write_text(feature_patch)
-        du.copy_to_container(container, patch_file, PurePosixPath(DOCKER_PATCH))
+        feature_patch_file = Path(patch_path)
+        feature_patch_file.write_text(feature_patch)
+        du.copy_to_container(container, feature_patch_file, PurePosixPath(DOCKER_PATCH))
         applied_patch = False
         for git_apply_cmd in GIT_APPLY_CMDS:
             cmd_res = container.exec_run(f"{git_apply_cmd} {DOCKER_PATCH}", workdir=work_dir)
             if cmd_res.exit_code == 0:
                 logger.info(f"Successfully applied feature patch to container")
                 applied_patch = True
+                test_results['feature_patch_applied'] = True
                 break
             else:
                 logger.info(f"Failed to apply feature patch to container: {git_apply_cmd}")
-
-        test_results['feature_patch_applied'] = applied_patch
 
         if not applied_patch:
             logger.info(f"Failed to apply feature patch to container")
             return test_results
 
-
+        # conda activate and install
+        cmd_res = container.exec_run(f"conda run -n {config['conda_env']} {config['install']}",
+                                     workdir=work_dir)
         # run f2p and p2p
         def run_tests_in_parallel(container, test_files, config, work_dir, timeout, logger, test_type):
             results = [None] * len(test_files)
@@ -175,19 +177,21 @@ def run_instance(
                 return test_str
 
             def run_test(index, test_file):
-                logger.info(f'begin to run {test_type}: {test_file}')
+                # logger.info(f'begin to run {test_type}: {test_file}')
                 if "django" in config['conda_env']:
                     test_file = format_django_test_name(test_file)
                     test_file_escaped = f'"{test_file}"'
                 else:
                     test_file_escaped = shlex.quote(test_file)
-                test_cmd = f"conda run -n {config['conda_env'].strip()} {config['test_cmd'].strip()} {test_file_escaped}"
 
                 if "sphinx" in config['conda_env']:
-                    clean_cmd = "sudo rm -rf /root/sphinx/.tox/py*"
+                    clean_cmd = "rm -rf /root/sphinx/.tox/py*"
                     clean_res = du.exec_run_with_timeout(container=container, cmd=clean_cmd, workdir=work_dir,
                                                          timeout=timeout)
                     logger.info(f"Sphinx cleanup completed for test {index}: {clean_res}")
+                    test_file_escaped = f'"{test_file}"'
+
+                test_cmd = f"conda run -n {config['conda_env'].strip()} {config['test_cmd'].strip()} {test_file_escaped}"
 
                 cmd_res = du.exec_run_with_timeout(
                     container=container,
@@ -195,7 +199,18 @@ def run_instance(
                     workdir=work_dir,
                     timeout=timeout
                 )
+
+                if "sphinx" in config['conda_env'] and 'PASSED' not in cmd_res[0].upper():
+                    test_cmd = f"conda run -n {config['conda_env'].strip()} pytest -rA --color=no -W ignore '{test_file}'"
+                    cmd_res = du.exec_run_with_timeout(
+                        container=container,
+                        cmd=test_cmd,
+                        workdir=work_dir,
+                        timeout=timeout
+                    )
+
                 results[index] = cmd_res[0]
+                logger.info(f"test cmd: {test_cmd}")
                 logger.info(f"test log: {cmd_res}")
 
             is_sphinx = "sphinx" in config['conda_env']
@@ -216,11 +231,11 @@ def run_instance(
 
         # Run f2p tests in parallel
         logger.info(f'begin to run f2p tests')
-        f2p_results = run_tests_in_parallel(container, f2p, config, work_dir, 600, logger, 'f2p')
+        f2p_results = run_tests_in_parallel(container, f2p, config, work_dir, 1200, logger, 'f2p')
 
         # Run p2p tests in parallel
         logger.info(f'begin to run p2p tests')
-        p2p_results = run_tests_in_parallel(container, p2p, config, work_dir, 600, logger, 'p2p')
+        p2p_results = run_tests_in_parallel(container, p2p, config, work_dir, 1200, logger, 'p2p')
 
         # Update test results
         test_results.update({
@@ -289,6 +304,9 @@ def eval_instance(task, report):
             "failure": p2p_failure,
         },
     }
+    if report['instance_id']=='sphinx__sphinx-doc__sphinx-7005':
+        print(results)
+
     return results
 
 
@@ -313,8 +331,9 @@ def run_instances(args):
     if args.gold:
         predictions = tasks
 
-    # Filter out unresolved tasks
+    # Filter instances to process
     if args.unresolved_only and os.path.exists(detail_path):
+        # In unresolved_only mode, only process unresolved tasks
         unresolved_ids = set()
         for instance in prev_instance:
             if not instance.get('resolved', False):
@@ -323,13 +342,29 @@ def run_instances(args):
         # Only keep unresolved tasks
         predictions = [pred for pred in predictions if pred['instance_id'] in unresolved_ids]
         logger.info(f'Filtered to {len(predictions)} unresolved tasks')
+    elif os.path.exists(detail_path):
+        # In all instances mode, also process instances with empty reports
+        not_attempted_ids = set()
+        for instance in prev_instance:
+            if instance.get('notes') == "Instance not attempted or report was empty.":
+                not_attempted_ids.add(instance['instance_id'])
+
+        # Only process new instances and those with empty reports
+        predictions = [pred for pred in predictions if
+                      pred['instance_id'] not in existing or
+                      pred['instance_id'] in not_attempted_ids]
+        logger.info(f'Running {len(predictions)} tasks (new or previously not attempted)')
 
     def process_instance(pred, tasks_record, write_lock=None):
         instance_id = pred['instance_id']
 
-        if instance_id in existing and not args.unresolved_only:
+        # For all instance mode, only skip if instance exists and doesn't have the note
+        if (instance_id in existing and
+            not args.unresolved_only and
+            existing[instance_id].get('notes') != "Instance not attempted or report was empty."):
             logger.info(f"Skipping existing instance_id: {instance_id}")
             return
+
         task = tasks_record[instance_id]
         repo_name = task['repo'].split('/')[-1]
 
@@ -402,7 +437,7 @@ def eval_instances(args):
 
     # Load existing results (if any)
     existing_results = {}
-    if args.unresolved_only and os.path.exists(output_fpath):
+    if os.path.exists(output_fpath):
         existing_details = load_jsonl(output_fpath)
         existing_results = {item["instance_id"]: item for item in existing_details}
 
@@ -413,10 +448,17 @@ def eval_instances(args):
     for task in all_tasks:
         instance_id = task['instance_id']
 
-        # If in unresolved_only mode and instance exists, skip processing but keep existing results
-        if args.unresolved_only and instance_id in existing_results:
-            final_results_to_write.append(existing_results[instance_id])
-            continue
+        # In unresolved_only mode, only process unresolved instances
+        if args.unresolved_only:
+            # If instance exists in current results and is resolved, add to final results without reprocessing
+            if instance_id in existing_results:
+                if existing_results[instance_id].get('resolved', False):
+                    final_results_to_write.append(existing_results[instance_id])
+                    continue
+                # Only unresolved instances will be processed, and these instances must have new reports
+                elif instance_id not in reports_record:
+                    final_results_to_write.append(existing_results[instance_id])
+                    continue
 
         # Process new instances or reprocess all instances
         if instance_id in reports_record:
@@ -497,9 +539,7 @@ def eval_instances(args):
         p2p_data = r.get("P2P", {})
         has_p2p_failure = (
                 p2p_data.get("failure") or
-                p2p_data.get("fail") or
-                len(p2p_data.get("failure", [])) > 0 or
-                len(p2p_data.get("fail", [])) > 0
+                len(p2p_data.get("failure", [])) > 0
         )
         if not has_p2p_failure:
             rt_rate += 1
@@ -538,10 +578,10 @@ def eval_instances(args):
 
     # ==== Phase 3: Generate and output report ====
     summary_lines = [
-        "-" * 30,
+        "-" * 90,
         f"{args.predictions_path}",
         f"Evaluation Results - {scope_description}",
-        "-" * 30,
+        "-" * 90,
         f"Total Instances: {total_instances}",
         f"Submitted Instances: {submitted_instances}",
         f"Applied%: {fp_apply_rate / total_instances:.2%} ({fp_apply_rate} / {total_instances})" if total_instances > 0 else "Applied%: 0.00% (0 / 0)",
@@ -551,12 +591,6 @@ def eval_instances(args):
         f"FV-Macro: {fv_macro_score:.4f}",
     ]
 
-    if args.unresolved_only and newly_processed_instances:
-        summary_lines.extend([
-            "-" * 30,
-            f"This Run Details:",
-            f"Newly Processed Instances: {len(newly_processed_instances)}",
-        ])
 
     summary_report_str = "\n".join(summary_lines)
     print(summary_report_str)
