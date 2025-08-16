@@ -20,11 +20,24 @@ def docker_login(client, username: str, password: str):
         exit(1)
 
 
+def check_remote_image_exists(client, remote_tag):
+    try:
+        client.images.get_registry_data(remote_tag)
+        return True
+    except docker.errors.APIError:
+        return False
+
+
 def push_image(client, instance_id):
     local_tag = f'ncbench_{instance_id}:latest'
     remote_tag = f'{DOCKERHUB_USER}/{REPO_NAME}:ncbench_{instance_id}'
 
     try:
+        # 检查远程镜像是否存在
+        if check_remote_image_exists(client, remote_tag):
+            print(f'Image {remote_tag} already exists in remote repository, skipping...')
+            return True
+
         image = client.images.get(local_tag)
         image.tag(remote_tag)
         print(f'Tagged {local_tag} as {remote_tag}')
@@ -66,3 +79,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
